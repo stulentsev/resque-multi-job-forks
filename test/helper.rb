@@ -9,6 +9,7 @@ Bundler.setup
 Bundler.require
 require 'test/unit'
 require 'resque-multi-job-forks'
+require 'timeout'
 
 # setup redis & resque.
 redis = Redis.new(:db => 1)
@@ -22,6 +23,28 @@ module Resque
       puts "*** #{msg}" unless ENV['VERBOSE'].nil?
     end
     alias_method :log!, :log
+
+    # Processes a given job in the child.
+    def perform_without_multi_job_forks(job)
+      begin
+        # 'will_fork?' returns false in test mode, but since we need to test
+        # if the :after_fork hook runs, we ignore 'will_fork?' here.
+        run_hook :after_fork, job # if will_fork?
+        job.perform
+      rescue Object => e
+        log "#{job.inspect} failed: #{e.inspect}"
+        begin
+          job.fail(e)
+        rescue Object => e
+          log "Received exception when reporting failure: #{e.inspect}"
+        end
+        failed!
+      else
+        log "done: #{job.inspect}"
+      ensure
+        yield job if block_given?
+      end
+    end
   end
 end
 
