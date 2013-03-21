@@ -17,7 +17,7 @@ module Resque
       alias_method :perform, :perform_with_multi_job_forks
 
       def shutdown_with_multi_job_forks
-        release_fork if fork_hijacked? && fork_job_limit_reached?
+        release_fork if fork_hijacked? && (fork_job_limit_reached? || @shutdown)
         shutdown_without_multi_job_forks
       end
       alias_method :shutdown_without_multi_job_forks, :shutdown?
