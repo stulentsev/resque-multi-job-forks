@@ -7,7 +7,11 @@ module Resque
     attr_accessor :jobs_per_fork
     attr_reader   :jobs_processed
 
-    unless method_defined?(:shutdown_without_multi_job_forks)
+    def self.multi_jobs_per_fork?
+      ENV["DISABLE_MULTI_JOBS_PER_FORK"].nil?
+    end
+
+    if multi_jobs_per_fork? && !method_defined?(:shutdown_without_multi_job_forks)
       def perform_with_multi_job_forks(job = nil)
         perform_without_multi_job_forks(job)
         hijack_fork unless fork_hijacked?
@@ -16,12 +20,26 @@ module Resque
       alias_method :perform_without_multi_job_forks, :perform
       alias_method :perform, :perform_with_multi_job_forks
 
-      def shutdown_with_multi_job_forks
+      def shutdown_with_multi_job_forks?
         release_fork if fork_hijacked? && (fork_job_limit_reached? || @shutdown)
-        shutdown_without_multi_job_forks
+        shutdown_without_multi_job_forks?
       end
-      alias_method :shutdown_without_multi_job_forks, :shutdown?
-      alias_method :shutdown?, :shutdown_with_multi_job_forks
+      alias_method :shutdown_without_multi_job_forks?, :shutdown?
+      alias_method :shutdown?, :shutdown_with_multi_job_forks?
+
+      def shutdown_with_multi_job_forks
+        shutdown_without_multi_job_forks
+        shutdown_child if is_parent_process?
+      end
+      alias_method :shutdown_without_multi_job_forks, :shutdown
+      alias_method :shutdown, :shutdown_with_multi_job_forks
+
+      def pause_processing_with_multi_job_forks
+        pause_processing_without_multi_job_forks
+        shutdown_child if is_parent_process?
+      end
+      alias_method :pause_processing_without_multi_job_forks, :pause_processing
+      alias_method :pause_processing, :pause_processing_with_multi_job_forks
 
       def working_on_with_worker_registration(job)
         register_worker
@@ -29,6 +47,20 @@ module Resque
       end
       alias_method :working_on_without_worker_registration, :working_on
       alias_method :working_on, :working_on_with_worker_registration    
+    end
+
+    # Need to tell the child to shutdown since it might be looping performing multiple jobs per fork
+    # The TSTP signal is registered only in forked processes and calls this function
+    def shutdown_child
+      begin
+        Process.kill('TSTP', @child)
+      rescue Errno::ESRCH
+        nil
+      end
+    end
+
+    def is_parent_process?
+      @child
     end
 
     def fork_hijacked?
@@ -42,6 +74,7 @@ module Resque
       @release_fork_limit = fork_job_limit
       @jobs_processed = 0
       @cant_fork = true
+      trap('TSTP') { shutdown }
     end
 
     def release_fork
