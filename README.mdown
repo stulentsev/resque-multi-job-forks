@@ -1,4 +1,4 @@
-= resque-multi-job-forks
+# resque-multi-job-forks
 
 ## Installation
 
@@ -31,7 +31,7 @@ This plugin also defines a new hook, that gets called right before the fork term
   end
   
 
-== Note on Patches/Pull Requests
+## Note on Patches/Pull Requests
  
 * Fork the project.
 * Make your feature addition or bug fix.
@@ -41,6 +41,6 @@ This plugin also defines a new hook, that gets called right before the fork term
   (if you want to have your own version, that is fine but bump version in a commit by itself I can ignore when I pull)
 * Send me a pull request. Bonus points for topic branches.
 
-== Copyright
+## Copyright
 
 Copyright (c) 2010 Mick Staugaard. See LICENSE for details.
