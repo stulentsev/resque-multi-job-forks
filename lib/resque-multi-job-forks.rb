@@ -16,8 +16,8 @@ module Resque
 
     if multi_jobs_per_fork? && !method_defined?(:shutdown_without_multi_job_forks)
       def perform_with_multi_job_forks(job = nil)
-        perform_without_multi_job_forks(job)
         hijack_fork unless fork_hijacked?
+        perform_without_multi_job_forks(job)
         @jobs_processed += 1
       end
       alias_method :perform_without_multi_job_forks, :perform
