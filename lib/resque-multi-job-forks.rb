@@ -10,6 +10,8 @@ module Resque
     attr_accessor :memory_threshold
     attr_reader   :jobs_processed
 
+    WorkerTerminated = Class.new(StandardError)
+
     def self.multi_jobs_per_fork?
       ENV["DISABLE_MULTI_JOBS_PER_FORK"].nil?
     end
@@ -22,6 +24,20 @@ module Resque
         else
           if term_child
             unregister_signal_handlers
+            trap('TERM') do
+              trap('TERM') do
+                # Ignore subsequent term signals
+              end
+
+              if @performing_job
+                # If a job is in progress, stop it immediately.
+                raise TermException.new("SIGTERM")
+              else
+                # If we're not currently running a job, shut down cleanly.
+                # This allows us to push unworked jobs back on the queue.
+                shutdown
+              end
+            end
             trap('QUIT') { shutdown }
           end
           raise NotImplementedError, "Pretending to not have forked"
@@ -39,9 +55,20 @@ module Resque
 
       def perform_with_multi_job_forks(job = nil)
         @fork_per_job = true unless fork_hijacked? # reconnect and after_fork
+        if shutdown?
+          # We got a request to shut down _after_ grabbing a job but _before_ starting work
+          # on it. Immediately report the job as failed and return.
+          if job
+            report_failed_job(job, WorkerTerminated.new("shutdown before job start"))
+          end
+          return
+        end
+        @performing_job = true
         perform_without_multi_job_forks(job)
         hijack_fork unless fork_hijacked?
         @jobs_processed += 1
+      ensure
+        @performing_job = false
       end
       alias_method :perform_without_multi_job_forks, :perform
       alias_method :perform, :perform_with_multi_job_forks
